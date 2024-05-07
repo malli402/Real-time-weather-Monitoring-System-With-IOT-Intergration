@@ -1,0 +1,173 @@
+#include <Wire.h> // Include the Wire library for I2C communication
+#include <Adafruit_GFX.h> // Include the Adafruit graphics library
+#include <Adafruit_SSD1306.h> // Include the Adafruit SSD1306 OLED display library
+#define BLYNK_PRINT Serial // Define Blynk print to use Serial
+#include <ESP8266WiFi.h> // Include the ESP8266 WiFi library
+#include <BlynkSimpleEsp8266.h> // Include the Blynk library for ESP8266
+#include <DHT.h> // Include the DHT sensor library
+#include <SFE_BMP180.h> // Include the BMP180 sensor library
+#include <MQ135.h> // Include the library for MQ135 sensor
+
+// Initialize the OLED display
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// Create objects for the sensors
+SFE_BMP180 bmp;
+DHT dht(D3, DHT11); // (sensor pin,sensor type)
+MQ135 mq135(A0);
+
+char auth[] = "yiETkvb6PLWkzWBnbXNfYTvvta_2q6al"; // Enter your Auth token
+char ssid[] = "Redmi Note 9 Pro Max";                // Enter your WIFI name
+char pass[] = "sai12345";                       // Enter your WIFI password
+
+BlynkTimer timer;
+
+// Define component pins
+#define rainPin D5 // Digital input pin for rain sensor
+
+// Create variables for sensor values
+double T, P;
+char status;
+
+// Create variables for tracking rain status
+bool isRaining = false;
+
+void setup()
+{
+    Serial.begin(9600);
+    Wire.begin();
+    display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+    display.display();
+    delay(500);
+    display.clearDisplay();
+
+    bmp.begin();
+
+    Blynk.begin(auth, ssid, pass, "blynk.cloud", 80);
+    dht.begin();
+
+// Display team information on the OLED
+    display.setTextSize(2.5);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 0);
+    display.println("Weather");
+    display.println("Monitor");
+    display.println("System");
+    display.println("By Batch-7");
+    display.display();
+    delay(3000);
+    display.clearDisplay();
+
+    display.setTextSize(1.7);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 0);
+    display.println("Team Members");
+    display.println("            ");
+    display.println("V.SaiGovind");
+    display.println("T.Prasanna");
+    display.println("S.Bhagya");
+    display.println("A.V.M.Reddy");
+    display.display();
+    delay(3000);
+  
+    // Call the functions
+    timer.setInterval(1000L, updateDisplay); // Refresh display every 10 seconds
+}
+
+// Update the OLED display with sensor values
+void updateDisplay()
+{
+    display.clearDisplay();
+    display.setTextSize(1.3);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 0);
+    display.println("Weather Monitor");
+    display.println("System");
+
+    // Update DHT11 sensor values
+    int h = dht.readHumidity();
+    float t = dht.readTemperature();
+
+    if (!(isnan(h) || isnan(t)))
+    {
+        Blynk.virtualWrite(V0, t);
+        Blynk.virtualWrite(V1, h);
+
+        display.setCursor(0, 16);
+        display.print("Temperature:");
+        display.print(t);
+        display.println(" C");
+
+        display.setCursor(0, 25);
+        display.print("Humidity:");
+        display.print(h);
+        display.println("%");
+        
+    }
+    else
+    {
+        Serial.println("Failed to read from DHT sensor!");
+    }
+
+    // Update rain sensor values
+    int rainValue = digitalRead(rainPin);
+    isRaining = (rainValue == HIGH);
+    Blynk.virtualWrite(V2, isRaining ? 255 : 0); // Turn on/off virtual LED based on rain status
+
+    display.setCursor(0, 35);
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.print("Rain or soil:");
+
+    if (isRaining) {
+        display.setCursor(80, 35);
+        display.print("DRY");
+    } else {
+        display.setCursor(80, 35);
+        display.print("WET");
+    }
+
+    // Update pressure values
+    status = bmp.startTemperature();
+    if (status != 0)
+    {
+        delay(status);
+        status = bmp.getTemperature(T);
+
+        status = bmp.startPressure(3); // 0 to 3
+        if (status != 0)
+        {
+            delay(status);
+            status = bmp.getPressure(P, T);
+            if (status != 0)
+            {
+                Blynk.virtualWrite(V3, P);
+
+                display.setCursor(0, 45);
+                display.print("Pressure:");
+                display.print(P);
+                display.print("hpa");
+            }
+        }
+    }
+
+    // Update air quality sensor (MQ135) values
+    int airQuality = mq135.getPPM();
+    Blynk.virtualWrite(V4, airQuality/10);
+    display.setCursor(0, 55);
+    display.print("Air Quality:");
+    display.print(airQuality/10);
+    display.print("PPM");
+
+    display.display();
+}
+
+void loop()
+{
+    Blynk.run(); // Run the Blynk library
+    timer.run(); // Run the Blynk timer
+}
+
